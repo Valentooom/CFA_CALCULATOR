@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<title>Калькулятор доходности ЦФА</title>
+<style>
+body {
+    background: #f8f9fa;
+    font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+    color:#222;
+    margin:0;padding:0;
+    display:flex;justify-content:center;align-items:flex-start;min-height:100vh;
+}
+.container {
+    background:#fff;border-radius:24px;box-shadow:0 8px 24px rgba(0,0,0,.09),0 1.5px 8px rgba(0,0,0,.04);
+    padding:36px 32px 24px 32px;margin:48px 0;max-width:490px;width:100%;
+}
+h2 {margin-top:0;font-weight:600;letter-spacing:1px;font-size:1.5rem;}
+label {display:block;margin:18px 0 4px 0;font-size:1rem;letter-spacing:.2px;}
+input, select {
+    width:100%; font-size:1.06rem; padding:9px 10px; margin-bottom:2px;
+    border-radius:8px; border:1px solid #ececec; background:#f3f5f7;
+    outline:none; box-sizing:border-box; transition:border .18s;
+}
+input:focus, select:focus {border-color:#2385ed;}
+button {
+    margin-top:20px; padding:12px 24px; border:none; border-radius:10px;
+    background:#0a84ff; color:#fff; font-size:1.08rem; font-weight:500;
+    box-shadow:0 2px 8px rgba(58,116,200,.05); cursor:pointer;
+    transition:background .12s; width:100%;
+}
+button:active {background:#0783e0;}
+#mainResult {
+    margin:15px 0 16px 0; padding:15px 17px;
+    background:#e8ffe8; border-radius:14px; font-size: 1.13rem; font-weight:400;
+    box-shadow:0 1px 4px rgba(0,0,0,.04);
+}
+#mainResult span.value {font-weight:600;margin-right:5px;}
+#mainResult .green {color:#189c44;}
+#mainResult .gray {color:#444;}
+#detailsToggleBtn {
+    margin-top:0; background: #f0faff; color:#098;
+    border:1px solid #b0e0dd; width:100%; transition:.13s;
+}
+.calcblock {
+    background: #eff3fa; border-radius: 10px;
+    padding: 14px 16px 8px 16px; margin-top: 11px; margin-bottom: 4px;
+    font-size: 1.00rem; display: none;
+}
+.calcblock b {color:#357de0;}
+.calcblock .green, .calcblock .rub {color:#19914a;font-weight:600;}
+.formula {color: #718aac; font-size: 0.99em;}
+.note {font-size:0.93rem;color:#666;margin-bottom:5px;}
+.error {color:red; font-weight:600;}
+.inline-flex {display: flex; gap: 10px; align-items: center;}
+.inline-flex input {flex: 1;}
+</style>
+</head>
+<body>
+<div class="container">
+    <h2>Калькулятор доходности ЦФА</h2>
+    <form id="cfaForm" onsubmit="return false;">
+        <label>Дата покупки:
+            <input type="date" id="purchaseDate" required />
+        </label>
+        <label>Дата окончания (погашения):
+            <input type="date" id="redemptionDate" required />
+        </label>
+        <label>Выберите способ ввода купонов:</label>
+        <select id="couponInputMode">
+            <option value="total">Сумма всех купонов на 1 ЦФА</option>
+            <option value="count_and_value">Количество купонов и размер одного (₽)</option>
+        </select>
+        <div id="couponsTotalInput">
+            <label>Сумма всех купонов на 1 ЦФА (₽):
+                <input type="number" id="totalCoupons" step="0.01" min="0" />
+            </label>
+        </div>
+        <div id="couponsCountValueInput" style="display:none;">
+            <div class="inline-flex">
+                <label style="flex:1;">
+                    Количество купонов:
+                    <input type="number" id="couponCount" step="1" min="0" value="0" />
+                </label>
+                <label style="flex:1;">
+                    Размер одного купона (₽):
+                    <input type="number" id="couponValue" step="0.01" min="0" value="0" />
+                </label>
+            </div>
+            <div class="note">Сумма купонов рассчитана как: Кол-во купонов × Размер одного</div>
+        </div>
+        <label>Тип комиссии банка:
+            <select id="commissionType">
+                <option value="rub">В рублях</option>
+                <option value="percent">В процентах (от вложенной суммы)</option>
+            </select>
+        </label>
+        <label>Комиссия банка:
+            <input type="number" id="bankCommission" step="0.01" min="0" value="0" required />
+        </label>
+        <label>Ставка налога (%):
+            <input type="number" id="taxRate" step="0.01" min="0" value="13" required />
+        </label>
+        <label>Количество ЦФА:
+            <input type="number" id="cfaCount" step="1" min="1" value="1" required />
+        </label>
+        <label>Покупная цена за один ЦФА (₽):
+            <input type="number" id="purchasePrice" step="0.01" min="0" required />
+        </label>
+        <label>Номинал (₽):
+            <input type="number" id="faceValue" step="0.01" min="0" value="1000" required />
+        </label>
+        <button id="calcButton" type="button">Рассчитать</button>
+    </form>
+    <div id="mainResult"></div>
+    <button id="detailsToggleBtn" type="button" onclick="toggleDetails()" style="display:none;">Показать подробности</button>
+    <div id="detailsBlock" class="calcblock"></div>
+</div>
+<script>
+window.onload = function () {
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    document.getElementById('purchaseDate').value = yyyy + '-' + mm + '-' + dd;
+};
+
+const couponInputMode = document.getElementById('couponInputMode');
+const couponsTotalInput = document.getElementById('couponsTotalInput');
+const couponsCountValueInput = document.getElementById('couponsCountValueInput');
+
+couponInputMode.addEventListener('change', () => {
+    if (couponInputMode.value === 'total') {
+        couponsTotalInput.style.display = 'block';
+        couponsCountValueInput.style.display = 'none';
+        document.getElementById('totalCoupons').required = true;
+        document.getElementById('couponCount').required = false;
+        document.getElementById('couponValue').required = false;
+    } else {
+        couponsTotalInput.style.display = 'none';
+        couponsCountValueInput.style.display = 'block';
+        document.getElementById('totalCoupons').required = false;
+        document.getElementById('couponCount').required = true;
+        document.getElementById('couponValue').required = true;
+    }
+});
+
+const commissionType = document.getElementById('commissionType');
+const bankCommission = document.getElementById('bankCommission');
+commissionType.addEventListener('change', () => {
+    if (commissionType.value === 'percent') {
+        bankCommission.placeholder = "Введите %";
+    } else {
+        bankCommission.placeholder = "Введите сумму, ₽";
+    }
+});
+// Helpers
+function daysBetween(date1, date2) {
+    return Math.floor((date2 - date1) / (1000 * 60 * 60 * 24));
+}
+
+// Скрытие/открытие подробностей
+function toggleDetails() {
+    const d = document.getElementById('detailsBlock');
+    const btn = document.getElementById('detailsToggleBtn');
+    if (d.style.display === "none" || d.style.display === "") {
+        d.style.display = "block";
+        btn.innerText = "Скрыть подробности";
+    } else {
+        d.style.display = "none";
+        btn.innerText = "Показать подробности";
+    }
+}
+
+document.getElementById('calcButton').addEventListener('click', function () {
+    const D1_str = document.getElementById('purchaseDate').value;
+    const D2_str = document.getElementById('redemptionDate').value;
+    const commissionTypeVal = document.getElementById('commissionType').value;
+    let bankCommissionValue = parseFloat(document.getElementById('bankCommission').value) || 0;
+    const taxRatePercent = parseFloat(document.getElementById('taxRate').value);
+    const cfaCount = parseInt(document.getElementById('cfaCount').value);
+    const purchasePriceSingle = parseFloat(document.getElementById('purchasePrice').value);
+    const faceValueSingle = parseFloat(document.getElementById('faceValue').value);
+
+    const mainResult = document.getElementById('mainResult');
+    const detailsBlock = document.getElementById('detailsBlock');
+    const detailsBtn = document.getElementById('detailsToggleBtn');
+
+    if (!D1_str || !D2_str || isNaN(bankCommissionValue) || isNaN(taxRatePercent) ||
+        isNaN(cfaCount) || isNaN(purchasePriceSingle) || isNaN(faceValueSingle)) {
+        mainResult.innerHTML = '<span class="error">Пожалуйста, заполните все поля корректно.</span>';
+        detailsBlock.style.display = "none";
+        detailsBtn.style.display = "none";
+        return;
+    }
+
+    const D1 = new Date(D1_str);
+    const D2 = new Date(D2_str);
+
+    const days = daysBetween(D1, D2);
+    if (days <= 0) {
+        mainResult.innerHTML = '<span class="error">Дата окончания должна быть позже даты покупки.</span>';
+        detailsBlock.style.display = "none";
+        detailsBtn.style.display = "none";
+        return;
+    }
+    if (cfaCount < 1) {
+        mainResult.innerHTML = '<span class="error">Количество ЦФА должно быть не меньше 1.</span>';
+        detailsBlock.style.display = "none";
+        detailsBtn.style.display = "none";
+        return;
+    }
+
+    // Купоны
+    let couponsPerCFA = 0, couponCount = 0, couponValue = 0;
+    let couponInputFormula = '';
+    if (couponInputMode.value === 'total') {
+        couponsPerCFA = parseFloat(document.getElementById('totalCoupons').value) || 0;
+    } else {
+        couponCount = parseInt(document.getElementById('couponCount').value) || 0;
+        couponValue = parseFloat(document.getElementById('couponValue').value) || 0;
+        couponsPerCFA = couponCount * couponValue;
+        couponInputFormula = `Сумма купонов на 1 ЦФА: ${couponCount} × ${couponValue.toFixed(2)} = ${couponsPerCFA.toFixed(2)} ₽`;
+    }
+
+    // Итоговая сумма купонов за все ЦФА
+    const couponsSumTotal = couponsPerCFA * cfaCount;
+
+    // Цена погашения по одному ЦФА = номинал + сумма купонов на 1 ЦФА
+    const redemptionPriceSingle = faceValueSingle + couponsPerCFA;
+
+    // Общие суммы по всем ЦФА
+    const totalPurchase = purchasePriceSingle * cfaCount;
+    const totalRedemption = redemptionPriceSingle * cfaCount;
+
+    // Валовая прибыль (до комиссии и налогов)
+    const grossProfitBeforeComm = totalRedemption - totalPurchase;
+
+    // Комиссия банка
+    let bankCommissionRub = 0;
+    let commissionComment = '';
+    if (commissionTypeVal === "rub") {
+        bankCommissionRub = bankCommissionValue;
+        commissionComment = `Комиссия банка: ${bankCommissionRub.toFixed(2)} ₽ (фикс.)`;
+    } else if (commissionTypeVal === "percent") {
+        bankCommissionRub = totalPurchase * bankCommissionValue / 100;
+        commissionComment = `Комиссия банка: ${bankCommissionValue.toFixed(2)}% × ${totalPurchase.toFixed(2)} = ${bankCommissionRub.toFixed(2)} ₽`;
+    }
+
+    // Всего прибыль ("валовая" после комиссии и налогов):
+    const grossProfit = grossProfitBeforeComm - bankCommissionRub;
+
+    // Доходность на вложенные средства с учетом комиссии
+    const grossYield = grossProfit / totalPurchase;
+
+    // Годовая доходность (сложный процент)
+    const annualYield = Math.pow(1 + grossYield, 365 / days) - 1;
+
+    // Простой маркетинговый годовой % (арифметический)
+    const simpleMarketingYieldPercent = grossYield * (365 / days) * 100;
+
+    // Налог с прибыли
+    const taxableIncome = Math.max(grossProfit, 0);
+    const taxAmount = taxableIncome * (taxRatePercent / 100);
+
+    // Чистая прибыль после налога
+    const netProfit = grossProfit - taxAmount;
+    const netYield = netProfit / totalPurchase;
+    const netAnnualYield = Math.pow(1 + netYield, 365 / days) - 1;
+    const years = (days/365).toFixed(3);
+
+    // === ВЫВОД Верхнего блока ===
+    mainResult.innerHTML = `
+<span class="gray">Прибыль:</span>
+<span class="value">${grossProfit.toFixed(2)} ₽</span>
+<br>
+<span class="gray">Прибыль после налога:</span> 
+<span class="green value">${netProfit.toFixed(2)} ₽</span>
+<br>
+<span class="gray">Годовая доходность (сложный процент):</span> 
+<span class="value">${(annualYield*100).toFixed(2)}%</span>
+<br>
+<span class="gray">Маркетинговая годовая доходность:</span>
+<span class="value">${simpleMarketingYieldPercent.toFixed(2)}%</span>
+`;
+
+    // === Подробности ===
+    detailsBlock.innerHTML = `
+<b>Вложено всего:</b> ${totalPurchase.toFixed(2)} ₽<br>
+<b>Выплачено за срок (номинал + купоны):</b> ${totalRedemption.toFixed(2)} ₽<br>
+${commissionComment}<br>
+<b>Всего купонов на 1 ЦФА:</b> ${couponsPerCFA.toFixed(2)} ₽<br>
+<b>Всего купонов на все ЦФА:</b> ${couponsSumTotal.toFixed(2)} ₽<br>
+${couponInputMode.value === 'count_and_value' ? couponInputFormula + "<br>" : ""}
+<b>Прибыль до комиссии:</b> ${grossProfitBeforeComm.toFixed(2)} ₽<br>
+<b>Минус комиссия банка:</b> ${bankCommissionRub.toFixed(2)} ₽<br>
+<b>Прибыль после комиссии:</b> ${grossProfit.toFixed(2)} ₽<br>
+<b>Доходность за весь период:</b> ${(grossYield*100).toFixed(2)}%<br>
+<b>Годовая доходность (сложный процент):</b> 
+<span class="formula">(1 + ${(grossYield).toFixed(6)})<sup>365 / ${days}</sup> - 1 = ${(annualYield*100).toFixed(2)}%</span><br>
+<b>Маркетинговая годовая доходность (арифметическая):</b><br>
+<span class="formula">(${grossProfit.toFixed(2)} / ${totalPurchase.toFixed(2)}) × (365 / ${days}) × 100% = ${simpleMarketingYieldPercent.toFixed(2)}%</span><br>
+<b>Налог (${taxRatePercent}%):</b> ${taxAmount.toFixed(2)} ₽<br>
+<b>Прибыль после налога:</b> ${netProfit.toFixed(2)} ₽<br>
+<b>Доходность после налога:</b> ${(netYield * 100).toFixed(2)}%<br>
+<b>Годовая доходность после налога:</b> 
+<span class="formula">(1 + ${netYield.toFixed(6)})<sup>365 / ${days}</sup> - 1 = ${(netAnnualYield * 100).toFixed(2)}%</span><br>
+<b>Период:</b> ${days} дней (~${years} лет)
+    `;
+
+    detailsBtn.style.display = "block";
+    detailsBlock.style.display = "none";
+    detailsBtn.innerText = "Показать подробности";
+
+});
+</script>
+</body>
+</html>
